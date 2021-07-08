@@ -1,0 +1,57 @@
+Column Name,Description
+id,Unique identifier (number) for each individual effect size
+author,First author
+year,Year of publication
+covidence_study_id,Unique identifier from Covidence (systematic review screening website)
+analysis,"Analysis the effect size corresponds to: domain (Cognitive Domain), variability (Intra-subject variability), subtype (Delirium motor subtype)"
+cog_test,Cognitive test the effect size refers to
+test_direction,"Test direction for the cognitive test measure: Positive (higher scores = better cognition), Negative (higher scores = worse cognition)"
+cog_domain_lezak,Cognitive domain as categorised according to Lezak et al. (2012)
+del_subtype,"For Delirium Motor Subtype data, this is the subtype the effect size is in reference to"
+data_type,"Extracted data type for analysis: quant_mean_sd (Mean and standard deviation for two groups), quant_count (event rate data for two groups), chi_square (Chi square data comparing two groups), "
+g,Column for calculated Hedges' g
+g_vi,Column for calculated sampling variance (for Hedges' g)
+g_sei,Column for calculated standard error (for Hedges' g)
+or,Column for calculated OR
+or_vi,Column for calculated sampling variance (for OR)
+or_sei,Column for calculated standard error (for OR)
+mean_median_na,"Format of extracted data for quant_mean_sd: median (Median value), mean (Mean and SD), mean_95CI (Mean and 95%CI), mean_sem (Mean and standard error), na (Not applicable; not quant_mean_sd data type)"
+median_type,"Type of median data available: s1 (median, minimum, maximum), s2 (median, Q1, Q3)"
+del_sample_size,Sample size of incident delirium group
+del_mean,Mean cognitive test score for incident delirium group
+del_sd,Standard deviation for cognitive test score for incident delirium group
+del_sem,Standard error for cognitive test score for incident delirium group
+del_95CI_ll,Lower limit of 95%CI for cognitive test score for incident delirium group
+del_95CI_ul,Upper limit of 95%CI for cognitive test score for incident delirium group
+del_median_q2,Median cognitive test score for incident delirium group
+del_IQR,Interquartile range for cognitive test score for incident delirium group
+del_qmin,Minimum cognitive test score for incident delirium group
+del_qmax,Maximum cognitive test score for incident delirium group
+del_q1,Quartile 1 value for cognitive test score for incident delirium group
+del_q3,Quartile 3 value for cognitive test score for incident delirium group
+NoDel_sample_size,Sample size of no incident delirium group
+NoDel_mean,Mean cognitive test score for no incident delirium group
+NoDel_sd,Standard deviation for cognitive test score for no incident delirium group
+NoDel_sem,Standard error for cognitive test score for no incident delirium group
+NoDel_95CI_ll,Lower limit of 95%CI for cognitive test score for no incident delirium group
+NoDel_95CI_ul,Upper limit of 95%CI for cognitive test score for no incident delirium group
+NoDel_median_q2,Median cognitive test score for no incident delirium group
+NoDel_IQR,Interquartile range for cognitive test score for no incident delirium group
+NoDel_qmin,Minimum cognitive test score for no incident delirium group
+NoDel_qmax,Maximum cognitive test score for no incident delirium group
+NoDel_q1,Quartile 1 value for cognitive test score for no incident delirium group
+NoDel_q3,Quartile 3 value for cognitive test score for no incident delirium group
+Del_total_n,Sample size of incident delirium group
+Del_n_with_impaired_cog,Number within incident delirium group with impaired cognition according to some cut-off/criteria
+No_del_total_n,Sample size of no incident delirium group
+No_del_n_with_impaired_cog,Number within no incident delirium group with impaired cognition according to some cut-off/criteria
+chi_square,Chi square value comparing cognitive test score for incident vs no incident delirium groups
+chi_square_p,Chi square p-value
+chi_square_N,Total sample size for chi square (incident delirium + no incident delirium)
+effect_direction,Effect direction for chi square value
+relative_risk,Relative risk estimate
+rr_95CI_ll,Relative risk upper limit of 95%CI
+rr_95CI_ul,Relative risk lower limit of 95%CI
+odds_ratio,Odds ratio estimate
+or_95CI_ll,Odds ratio upper limit of 95%CI
+or_95CI_ul,Odds ratio lower limit of 95%CI

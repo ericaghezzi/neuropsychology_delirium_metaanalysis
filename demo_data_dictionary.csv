@@ -1,0 +1,20 @@
+Column Name,Description
+author,Lead author last name
+year,Year of publication
+covidence_study_id,Unique identifier from Covidence (systematic review screening website)
+title,Title of journal article
+country,Country of study
+study design,"Design of study (e.g. prospective cohort, case-control, etc)"
+setting,Setting/s in which the study took place
+sample_size,Total sample size within analysis (incident and no incident delirium groups together)
+male,Number of male participants
+female,Number of female participants
+sex_notes,Notes regarding the sex of partipants (e.g. if sex was only reported at baseline and does not correspond to analysis sample size)
+mean_age,"Mean age of participant sample (in some cases calculated based on reported median, or as a weighted mean if 2 groups were reported)"
+sd_age,"Standard deviation of the age of participant sample (in some cases calculated based on reported median, or as a weighted standard deviation if 2 groups were reported)"
+predel_exclusion,"Did the study exclude participants with pre-existing delirium: yes, no"
+precog_exclusion,"Did the study exclude participants with pre-existing cognitive impairment/dementia: cogniton (excluded those based on a cognitive test score cut-off), dementia (excluded those with pre-existing dementia), no (no exclusion based on cognition)"
+precipitant,"Precipitant to delirium: cardiac (Cardiac surgery), noncardiac (Non-cardiac surgery), procedure (Hematopoietic Stem Cell Transplantation), non-operative (No surgery/procedure)"
+precipitant_details,Details of the precipant to delirium
+del_measure,Measure/s of delirium used
+del_assessors_trained,"Was the training of delirium assessors specified: yes, no"

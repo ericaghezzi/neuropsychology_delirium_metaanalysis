@@ -1,0 +1,1538 @@
+---
+title: "subgroup_analysis"
+output: html_document
+keep_md: true
+---
+
+```{r setup, include="FALSE"}
+# Register an inline hook:
+knitr::knit_hooks$set(inline = function(x) {
+  if(is.numeric(x)) {
+    if(abs(x - round(x) < .Machine$double.eps)){
+      formatted <- format(x, digits = 0)     
+    }
+    if(x < 0.01 && x > -0.01){
+            x <- sprintf("%1.3f", x)
+      paste(x, collapse = ", ")
+    }
+    else{
+      x <- sprintf("%1.3f", x)
+      paste(x, collapse = ", ")
+    }
+  }
+  else {
+    formatted <- x
+  }
+})
+
+```
+
+```{r meta setup, include="FALSE"}
+#load packages
+library(estmeansd)
+library(esc)
+library(readxl)
+library(readr)
+library(tidyverse)
+library(metafor)
+
+#set working directory
+setwd("U:/neuropsych_delirium_metaanalysis")
+
+#import data
+data <- read_csv("data.csv", col_types = cols(g = col_number(),
+                                              g_vi = col_number(),
+                                              g_sei = col_number(),
+                                              or = col_number(),
+                                              or_vi = col_number(),
+                                              or_sei = col_number()))
+#rename data file
+prac_data <- data
+
+#transformations (of median or mean/95%CI or mean/SEM) to mean/SD
+for (i in 1:length(prac_data$id)) {
+  if(prac_data[i, "mean_median_na"] == "median") {
+    if(prac_data[i, "median_type"] == "s1") { #s1 (min, med, max)
+      ##del mean and sd calc
+      min <- prac_data[[i, "del_qmin"]]
+      max <- prac_data[[i, "del_qmax"]]
+      med <- prac_data[[i, "del_median_q2"]]
+      n <- prac_data[[i, "del_sample_size"]]
+      
+      mean_calc <- qe.mean.sd(min.val = min, med.val = med, max.val = max, n = n)
+      
+      prac_data[i, "del_mean"] <- as.numeric(mean_calc["est.mean"])
+      prac_data[i, "del_sd"] <- as.numeric(mean_calc["est.sd"])
+      
+      ##no del mean and sd calc
+      min <- prac_data[[i, "NoDel_qmin"]]
+      max <- prac_data[[i, "NoDel_qmax"]]
+      med <- prac_data[[i, "NoDel_median_q2"]]
+      n <- prac_data[[i, "NoDel_sample_size"]]
+      
+      mean_calc <- qe.mean.sd(min.val = min, med.val = med, max.val = max, n = n)
+      
+      prac_data[i, "NoDel_mean"] <- mean_calc[["est.mean"]]
+      prac_data[i, "NoDel_sd"] <- mean_calc[["est.sd"]]
+    }
+    if(prac_data[i, "median_type"] == "s2") { #s2 (q1,q3,med)
+      ##del mean and sd calc
+      q1 <-  prac_data[[i, "del_q1"]]
+      q3 <- prac_data[[i, "del_q3"]]
+      med <- prac_data[[i, "del_median_q2"]]
+      n <- prac_data[[i, "del_sample_size"]]
+      
+      mean_calc <- qe.mean.sd(q1.val = q1, med.val = med, q3.val = q3, n = n)
+      
+      prac_data[i, "del_mean"] <- mean_calc[["est.mean"]]
+      prac_data[i, "del_sd"] <- mean_calc[["est.sd"]]
+      
+      ##no del mean and sd calc
+      q1 <- prac_data[[i, "NoDel_q1"]]
+      q3 <- prac_data[[i, "NoDel_q3"]]
+      med <- prac_data[[i, "NoDel_median_q2"]]
+      n <- prac_data[[i, "NoDel_sample_size"]]
+      
+      mean_calc <- qe.mean.sd(q1.val = q1, med.val = med, q3.val = q3, n = n)
+      
+      prac_data[i, "NoDel_mean"] <- mean_calc[["est.mean"]]
+      prac_data[i, "NoDel_sd"] <- mean_calc[["est.sd"]]
+    }
+  }
+  if(prac_data[i, "mean_median_na"] == "mean_95CI") { #calculate standard deviation from 95%CI data
+    prac_data[i, "del_sd"] <- sqrt(prac_data[[i, "del_sample_size"]])*((prac_data[[i, "del_95CI_ul"]]-prac_data[[i, "del_95CI_ll"]])/3.92)
+    prac_data[i, "NoDel_sd"] <- sqrt(prac_data[[i, "NoDel_sample_size"]])*((prac_data[[i, "NoDel_95CI_ul"]]-prac_data[[i, "NoDel_95CI_ll"]])/3.92)
+  }
+  if(prac_data[i, "mean_median_na"] == "mean_sem") { #calculate standard deviation from SEM data
+    prac_data[i, "del_sd"] <- prac_data[[i, "del_sem"]]*sqrt(prac_data[[i, "del_sample_size"]])
+    prac_data[i, "NoDel_sd"] <- prac_data[[i, "NoDel_sem"]]*sqrt(prac_data[[i, "NoDel_sample_size"]])
+  }
+}
+
+#effect size calculations for:
+  #mean/SD data to Hedges g
+  #categorical/count data to OR and Hedges g
+  #OR to Hedges g
+  #chi square to Hedges g
+for (i in 1:length(prac_data$id)) {
+  if(prac_data[i, "data_type"] == "quant_mean_sd") { #take all mean/SD data
+    #assign variables (mean, sd, N for both groups)
+    m1i <- prac_data[[i, "del_mean"]]
+    sd1i <- prac_data[[i, "del_sd"]]
+    n1i <- prac_data[[i, "del_sample_size"]]
+    
+    m2i <- prac_data[[i, "NoDel_mean"]]
+    sd2i <- prac_data[[i, "NoDel_sd"]]
+    n2i <- prac_data[[i, "NoDel_sample_size"]]
+    
+    #run effect size (Hedges g) calc
+    es <- escalc(measure = "SMD", m1i = m1i, sd1i = sd1i, n1i = n1i, m2i = m2i, sd2i = sd2i, n2i = n2i)
+    es_summary <- summary.escalc(es)
+    
+    #copy across effect size into data frame
+    prac_data[i, "g"] <- as.numeric(es$yi[1])
+    prac_data[i, "g_vi"] <- as.numeric(es$vi[1])
+    prac_data[i, "g_sei"] <- as.numeric(es_summary$sei)
+  }
+  if(prac_data[i, "data_type"] == "quant_count") {  #take all categorical/count data
+    #assign variables (N with decline, N without, total N for both groups)
+    ai <- prac_data[[i, "Del_n_with_impaired_cog"]]
+    bi <- prac_data[[i, "Del_total_n"]] - prac_data[[i, "Del_n_with_impaired_cog"]]
+    n1i <- prac_data[[i, "Del_total_n"]]
+    ci <- prac_data[[i, "No_del_n_with_impaired_cog"]]
+    di <- prac_data[[i, "No_del_total_n"]] - prac_data[[i, "No_del_n_with_impaired_cog"]]
+    n2i <- prac_data[[i, "No_del_total_n"]]
+    
+    #run effect size (OR) calc
+    or <- escalc(measure = "OR", ai = ai, bi = bi, n1i = n1i, ci = ci, di = di, n2i = n2i)
+    or_summary <- summary.escalc(or) #use this to calculate sei (which is also able to be calculated for raw OR data and so both can be pooled together)
+    
+    #run effect size (Hedges g) calc
+    g_or <- escalc(measure = "OR2DN", ai = ai, bi = bi, n1i = n1i, ci = ci, di = di, n2i = n2i)
+    g_or_summary <- summary.escalc(g_or)
+    
+    #copy across effect size into data frame
+    prac_data[i, "or"] <- as.numeric(or$yi[1])
+    prac_data[i, "or_vi"] <- as.numeric(or$vi[1]) 
+    prac_data[i, "or_sei"] <- as.numeric(or_summary$sei)
+    
+    prac_data[i, "g"] <- as.numeric(g_or$yi[1]) 
+    prac_data[i, "g_vi"] <- as.numeric(g_or$vi[1])
+    prac_data[i, "g_sei"] <- as.numeric(g_or_summary$sei)
+  }
+  if(prac_data[i, "data_type"] == "or") { #take all OR data 
+    #or to smd calculation
+    smd_or <- (sqrt(3)/pi)*log(prac_data[[i, "odds_ratio"]])
+    
+    #or upper and lower limits to st error
+    lower <- log(prac_data[[i, "or_95CI_ll"]])
+    upper <- log(prac_data[[i, "or_95CI_ul"]])
+    
+    logodds_sterr <- (upper - lower)/3.92 #calculate standard error with 95% CI
+    
+    #convert to standard error of SMD by multiplying by same constant
+    smd_or_sterr <- (sqrt(3)/pi)*logodds_sterr
+    
+    #copy across effect size into data frame
+    prac_data[i, "or"] <- as.numeric(log(prac_data[[i, "odds_ratio"]])) #log odds to match other calc
+    prac_data[i, "or_sei"] <- as.numeric(logodds_sterr)
+    
+    prac_data[i, "g"] <- as.numeric(smd_or)
+    prac_data[i, "g_sei"] <- as.numeric(smd_or_sterr)
+  } 
+  if(prac_data[i, "data_type"] == "chi_square") { #take all chi square data
+    #assign variables (chi square, p, N)
+    chisq <- prac_data[[i, "chi_square"]]
+    p <- prac_data[[i, "chi_square_p"]]
+    N <- prac_data[[i, "chi_square_N"]]
+    
+    #run effect size (Hedges g) calc
+    chisq <- esc_chisq(chisq = chisq, totaln = N, es.type = "g")
+    
+    #copy across effect size into data frame (transform negatively coded effect direction)
+    if(prac_data[i, "effect_direction"] == "Negative") {
+      #copy to df
+      prac_data[i, "g"] <- as.numeric(chisq$es[[1]])*-1
+      prac_data[i, "g_sei"] <- as.numeric(chisq$se[[1]])
+    }
+    if(prac_data[i, "effect_direction"] == "Positive"){
+      #copy to df
+      prac_data[i, "g"] <- as.numeric(chisq$es[[1]])
+      prac_data[i, "g_sei"] <- as.numeric(chisq$se[[1]])
+    }
+  }
+}
+
+#### add data for subgroup analyses ####
+#load demographic data
+demo_data <- read_csv("demo_data.csv")
+#we only need covidence identifier column and columns relevant for subgroup analyses
+demo_data <- demo_data %>%
+  select(covidence_study_id, predel_exclusion, precog_exclusion, precipitant, del_assessors_trained) %>%
+  mutate(precog_exclusion_yesno = ifelse(precog_exclusion == "no", "no", "yes")) #mutate to collapse across dementia/cognition exclusion criteria
+#join demo_data to main data file (prac_data)
+prac_data <- left_join(prac_data, demo_data, by="covidence_study_id")
+
+####### cognitive domain analysis ######
+######Remove extreme value (following inspection of forest plot of all data points)#####
+prac_data <- prac_data %>%
+  filter(author != "Tai") #remove as extreme value
+
+#set up data file (only include relevant data [domain] and adjust for test direction)
+meta_data_cog <- prac_data %>%
+  filter(analysis == "domain") %>% #only include data relevant for domains analysis
+  mutate(g_trans = ifelse(test_direction == "Negative", g*-1, g), #add in adjustment for negatively coded tests (*-1)
+         or_trans = ifelse(test_direction == "Negative", or*-1, or)) #add in adjustment for negatively coded tests (*-1)
+```
+### Subgroup Analyses: Pre-existing cognitive impairment
+
+```{r precog excl subgroup, include=FALSE}
+######Studies which excluded for baseline cognitive impairment/dementia only#######
+#set up data file for domain analysis
+data_domain_precog_excl <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>% #filter so only including mean and sd format data for now
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study so future calculations are done within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study only appear on one row
+  ungroup() %>%
+  filter(precog_exclusion_yesno == "yes") %>% 
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+per <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain_precog_excl, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_precog_excl <- att
+con_precog_excl <- con
+exe_precog_excl <- exe
+mem_precog_excl <- mem
+ori_precog_excl <- ori
+per_precog_excl <- per
+ver_precog_excl <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_precog_excl <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               coef(ori),
+                               coef(per),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               ori$k,
+                               per$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   ori$ci.lb,
+                                   per$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   ori$ci.ub,
+                                   per$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      ori$se,
+                                      per$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  ori$pval,
+                                  per$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    "Orientation",
+                                    "Perception",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  ori$tau2,
+                                  per$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     ori$se.tau2,
+                                     per$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                ori$I2,
+                                per$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                ori$QE,
+                                per$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 ori$QEp,
+                                 per$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_precog_excl <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_precog_excl)
+
+######Studies which DID NOT exclude for baseline cognitive impairment/dementia only#######
+#set up data file for domain analysis
+data_domain_precog_incl <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(precog_exclusion_yesno == "no") %>% 
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain_precog_incl, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_precog_incl <- att
+con_precog_incl <- con
+exe_precog_incl <- exe
+mem_precog_incl <- mem
+ori_precog_incl <- ori
+#per_precog_incl <- per
+ver_precog_incl <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_precog_incl <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               coef(ori),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               ori$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   ori$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   ori$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      ori$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  ori$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    "Orientation",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  ori$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     ori$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                ori$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                ori$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 ori$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_precog_incl <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_precog_incl)
+```
+
+**Pre-existing cognitive impairment exclusion subgroup**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_precog_excl[["QM"]][[1]]` | `r meta_domain_sep_precog_excl[["QMp"]][[1]]` 
+`r domain_sep_precog_excl$domain[[1]]` | `r domain_sep_precog_excl$k[[1]]` | `r domain_sep_precog_excl$b[[1]]` | `r domain_sep_precog_excl$ci.lb[[1]]` - `r domain_sep_precog_excl$ci.ub[[1]]` | `r domain_sep_precog_excl$pval[[1]]` | `r domain_sep_precog_excl$tau2[[1]]` | `r domain_sep_precog_excl$se.tau2[[1]]` | `r domain_sep_precog_excl$I2[[1]]` | `r domain_sep_precog_excl$QE[[1]]` | `r domain_sep_precog_excl$QEp[[1]]`
+`r domain_sep_precog_excl$domain[[2]]` | `r domain_sep_precog_excl$k[[2]]` | `r domain_sep_precog_excl$b[[2]]` | `r domain_sep_precog_excl$ci.lb[[2]]` - `r domain_sep_precog_excl$ci.ub[[2]]` | `r domain_sep_precog_excl$pval[[2]]` | `r domain_sep_precog_excl$tau2[[2]]` | `r domain_sep_precog_excl$se.tau2[[2]]` | `r domain_sep_precog_excl$I2[[2]]` | `r domain_sep_precog_excl$QE[[2]]` | `r domain_sep_precog_excl$QEp[[2]]`
+`r domain_sep_precog_excl$domain[[3]]` | `r domain_sep_precog_excl$k[[3]]` | `r domain_sep_precog_excl$b[[3]]` | `r domain_sep_precog_excl$ci.lb[[3]]` - `r domain_sep_precog_excl$ci.ub[[3]]` | `r domain_sep_precog_excl$pval[[3]]` | `r domain_sep_precog_excl$tau2[[3]]` | `r domain_sep_precog_excl$se.tau2[[3]]` | `r domain_sep_precog_excl$I2[[3]]` | `r domain_sep_precog_excl$QE[[3]]` | `r domain_sep_precog_excl$QEp[[3]]`
+`r domain_sep_precog_excl$domain[[4]]` | `r domain_sep_precog_excl$k[[4]]` | `r domain_sep_precog_excl$b[[4]]` | `r domain_sep_precog_excl$ci.lb[[4]]` - `r domain_sep_precog_excl$ci.ub[[4]]` | `r domain_sep_precog_excl$pval[[4]]` | `r domain_sep_precog_excl$tau2[[4]]` | `r domain_sep_precog_excl$se.tau2[[4]]` | `r domain_sep_precog_excl$I2[[4]]` | `r domain_sep_precog_excl$QE[[4]]` | `r domain_sep_precog_excl$QEp[[4]]`
+`r domain_sep_precog_excl$domain[[5]]` | `r domain_sep_precog_excl$k[[5]]` | `r domain_sep_precog_excl$b[[5]]` | `r domain_sep_precog_excl$ci.lb[[5]]` - `r domain_sep_precog_excl$ci.ub[[5]]` | `r domain_sep_precog_excl$pval[[5]]` | `r domain_sep_precog_excl$tau2[[5]]` | `r domain_sep_precog_excl$se.tau2[[5]]` | `r domain_sep_precog_excl$I2[[5]]` | `r domain_sep_precog_excl$QE[[5]]` | `r domain_sep_precog_excl$QEp[[5]]`
+`r domain_sep_precog_excl$domain[[6]]` | `r domain_sep_precog_excl$k[[6]]` | `r domain_sep_precog_excl$b[[6]]` | `r domain_sep_precog_excl$ci.lb[[6]]` - `r domain_sep_precog_excl$ci.ub[[6]]` | `r domain_sep_precog_excl$pval[[6]]` | `r domain_sep_precog_excl$tau2[[6]]` | `r domain_sep_precog_excl$se.tau2[[6]]` | `r domain_sep_precog_excl$I2[[6]]` | `r domain_sep_precog_excl$QE[[6]]` | `r domain_sep_precog_excl$QEp[[6]]`
+`r domain_sep_precog_excl$domain[[7]]` | `r domain_sep_precog_excl$k[[7]]` | `r domain_sep_precog_excl$b[[7]]` | `r domain_sep_precog_excl$ci.lb[[7]]` - `r domain_sep_precog_excl$ci.ub[[7]]` | `r domain_sep_precog_excl$pval[[7]]` | `r domain_sep_precog_excl$tau2[[7]]` | `r domain_sep_precog_excl$se.tau2[[7]]` | `r domain_sep_precog_excl$I2[[7]]` | `r domain_sep_precog_excl$QE[[7]]` | `r domain_sep_precog_excl$QEp[[7]]`
+
+
+**Pre-existing cognitive impairment no exclusion subgroup**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_precog_incl[["QM"]][[1]]` | `r meta_domain_sep_precog_incl[["QMp"]][[1]]` 
+`r domain_sep_precog_incl$domain[[1]]` | `r domain_sep_precog_incl$k[[1]]` | `r domain_sep_precog_incl$b[[1]]` | `r domain_sep_precog_incl$ci.lb[[1]]` - `r domain_sep_precog_incl$ci.ub[[1]]` | `r domain_sep_precog_incl$pval[[1]]` | `r domain_sep_precog_incl$tau2[[1]]` | `r domain_sep_precog_incl$se.tau2[[1]]` | `r domain_sep_precog_incl$I2[[1]]` | `r domain_sep_precog_incl$QE[[1]]` | `r domain_sep_precog_incl$QEp[[1]]`
+`r domain_sep_precog_incl$domain[[2]]` | `r domain_sep_precog_incl$k[[2]]` | `r domain_sep_precog_incl$b[[2]]` | `r domain_sep_precog_incl$ci.lb[[2]]` - `r domain_sep_precog_incl$ci.ub[[2]]` | `r domain_sep_precog_incl$pval[[2]]` | `r domain_sep_precog_incl$tau2[[2]]` | `r domain_sep_precog_incl$se.tau2[[2]]` | `r domain_sep_precog_incl$I2[[2]]` | `r domain_sep_precog_incl$QE[[2]]` | `r domain_sep_precog_incl$QEp[[2]]`
+`r domain_sep_precog_incl$domain[[3]]` | `r domain_sep_precog_incl$k[[3]]` | `r domain_sep_precog_incl$b[[3]]` | `r domain_sep_precog_incl$ci.lb[[3]]` - `r domain_sep_precog_incl$ci.ub[[3]]` | `r domain_sep_precog_incl$pval[[3]]` | `r domain_sep_precog_incl$tau2[[3]]` | `r domain_sep_precog_incl$se.tau2[[3]]` | `r domain_sep_precog_incl$I2[[3]]` | `r domain_sep_precog_incl$QE[[3]]` | `r domain_sep_precog_incl$QEp[[3]]`
+`r domain_sep_precog_incl$domain[[4]]` | `r domain_sep_precog_incl$k[[4]]` | `r domain_sep_precog_incl$b[[4]]` | `r domain_sep_precog_incl$ci.lb[[4]]` - `r domain_sep_precog_incl$ci.ub[[4]]` | `r domain_sep_precog_incl$pval[[4]]` | `r domain_sep_precog_incl$tau2[[4]]` | `r domain_sep_precog_incl$se.tau2[[4]]` | `r domain_sep_precog_incl$I2[[4]]` | `r domain_sep_precog_incl$QE[[4]]` | `r domain_sep_precog_incl$QEp[[4]]`
+`r domain_sep_precog_incl$domain[[5]]` | `r domain_sep_precog_incl$k[[5]]` | `r domain_sep_precog_incl$b[[5]]` | `r domain_sep_precog_incl$ci.lb[[5]]` - `r domain_sep_precog_incl$ci.ub[[5]]` | `r domain_sep_precog_incl$pval[[5]]` | `r domain_sep_precog_incl$tau2[[5]]` | `r domain_sep_precog_incl$se.tau2[[5]]` | `r domain_sep_precog_incl$I2[[5]]` | `r domain_sep_precog_incl$QE[[5]]` | `r domain_sep_precog_incl$QEp[[5]]`
+`r domain_sep_precog_incl$domain[[6]]` | `r domain_sep_precog_incl$k[[6]]` | `r domain_sep_precog_incl$b[[6]]` | `r domain_sep_precog_incl$ci.lb[[6]]` - `r domain_sep_precog_incl$ci.ub[[6]]` | `r domain_sep_precog_incl$pval[[6]]` | `r domain_sep_precog_incl$tau2[[6]]` | `r domain_sep_precog_incl$se.tau2[[6]]` | `r domain_sep_precog_incl$I2[[6]]` | `r domain_sep_precog_incl$QE[[6]]` | `r domain_sep_precog_incl$QEp[[6]]`
+
+### Subgroup Analyses: Pre-existing delirium
+
+```{r predel excl subgroup, include="FALSE"}
+######Studies which excluded for baseline delirium only#######
+#set up data file for domain analysis
+data_domain_predel_excl <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(predel_exclusion == "yes") %>% 
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#con <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+per <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain_predel_excl, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_predel_excl <- att
+#con_predel_excl <- con
+exe_predel_excl <- exe
+mem_predel_excl <- mem
+ori_predel_excl <- ori
+per_predel_excl <- per
+ver_predel_excl <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_predel_excl <- data.frame(b = c(coef(att), 
+                                           #coef(con),
+                                           coef(exe),
+                                           coef(mem),
+                                           coef(ori),
+                                           coef(per),
+                                           coef(ver)),
+                                     k = c(att$k,
+                                           #con$k,
+                                           exe$k,
+                                           mem$k,
+                                           ori$k,
+                                           per$k,
+                                           ver$k),
+                                     ci.lb = c(att$ci.lb,
+                                               #con$ci.lb,
+                                               exe$ci.lb,
+                                               mem$ci.lb,
+                                               ori$ci.lb,
+                                               per$ci.lb,
+                                               ver$ci.lb),
+                                     ci.ub = c(att$ci.ub,
+                                               #con$ci.ub,
+                                               exe$ci.ub,
+                                               mem$ci.ub,
+                                               ori$ci.ub,
+                                               per$ci.ub,
+                                               ver$ci.ub),
+                                     stderror = c(att$se,
+                                                  #con$se,
+                                                  exe$se,
+                                                  mem$se,
+                                                  ori$se,
+                                                  per$se,
+                                                  ver$se),
+                                     pval = c(att$pval,
+                                              #con$pval,
+                                              exe$pval,
+                                              mem$pval,
+                                              ori$pval,
+                                              per$pval,
+                                              ver$pval),
+                                     domain = c("Attention",
+                                                #"Construction & Motor Performance",
+                                                "Executive Functions",
+                                                "Memory",
+                                                "Orientation",
+                                                "Perception",
+                                                "Verbal Functions & Language Skills"),
+                                     tau2 = c(att$tau2,
+                                              #con$tau2,
+                                              exe$tau2,
+                                              mem$tau2,
+                                              ori$tau2,
+                                              per$tau2,
+                                              ver$tau2),
+                                     se.tau2 = c(att$se.tau2,
+                                                 #con$se.tau2,
+                                                 exe$se.tau2,
+                                                 mem$se.tau2,
+                                                 ori$se.tau2,
+                                                 per$se.tau2,
+                                                 ver$se.tau2),
+                                     I2 = c(att$I2,
+                                            #con$I2,
+                                            exe$I2,
+                                            mem$I2,
+                                            ori$I2,
+                                            per$I2,
+                                            ver$I2),
+                                     QE = c(att$QE,
+                                            #con$QE,
+                                            exe$QE,
+                                            mem$QE,
+                                            ori$QE,
+                                            per$QE,
+                                            ver$QE),
+                                     QEp = c(att$QEp,
+                                             #con$QEp,
+                                             exe$QEp,
+                                             mem$QEp,
+                                             ori$QEp,
+                                             per$QEp,
+                                             ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_predel_excl <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_predel_excl)
+
+######Studies which DID NOT exclude for baseline delirium only#######
+#set up data file for domain analysis
+data_domain_predel_incl <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>% 
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(predel_exclusion == "no") %>% 
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+per <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain_predel_incl, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_predel_incl <- att
+con_predel_incl <- con
+exe_predel_incl <- exe
+mem_predel_incl <- mem
+ori_predel_incl <- ori
+per_predel_incl <- per
+ver_predel_incl <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_predel_incl <- data.frame(b = c(coef(att), 
+                                           coef(con),
+                                           coef(exe),
+                                           coef(mem),
+                                           coef(ori),
+                                           coef(per),
+                                           coef(ver)),
+                                     k = c(att$k,
+                                           con$k,
+                                           exe$k,
+                                           mem$k,
+                                           ori$k,
+                                           per$k,
+                                           ver$k),
+                                     ci.lb = c(att$ci.lb,
+                                               con$ci.lb,
+                                               exe$ci.lb,
+                                               mem$ci.lb,
+                                               ori$ci.lb,
+                                               per$ci.lb,
+                                               ver$ci.lb),
+                                     ci.ub = c(att$ci.ub,
+                                               con$ci.ub,
+                                               exe$ci.ub,
+                                               mem$ci.ub,
+                                               ori$ci.ub,
+                                               per$ci.ub,
+                                               ver$ci.ub),
+                                     stderror = c(att$se,
+                                                  con$se,
+                                                  exe$se,
+                                                  mem$se,
+                                                  ori$se,
+                                                  per$se,
+                                                  ver$se),
+                                     pval = c(att$pval,
+                                              con$pval,
+                                              exe$pval,
+                                              mem$pval,
+                                              ori$pval,
+                                              per$pval,
+                                              ver$pval),
+                                     domain = c("Attention",
+                                                "Construction & Motor Performance",
+                                                "Executive Functions",
+                                                "Memory",
+                                                "Orientation",
+                                                "Perception",
+                                                "Verbal Functions & Language Skills"),
+                                     tau2 = c(att$tau2,
+                                              con$tau2,
+                                              exe$tau2,
+                                              mem$tau2,
+                                              ori$tau2,
+                                              per$tau2,
+                                              ver$tau2),
+                                     se.tau2 = c(att$se.tau2,
+                                                 con$se.tau2,
+                                                 exe$se.tau2,
+                                                 mem$se.tau2,
+                                                 ori$se.tau2,
+                                                 per$se.tau2,
+                                                 ver$se.tau2),
+                                     I2 = c(att$I2,
+                                            con$I2,
+                                            exe$I2,
+                                            mem$I2,
+                                            ori$I2,
+                                            per$I2,
+                                            ver$I2),
+                                     QE = c(att$QE,
+                                            con$QE,
+                                            exe$QE,
+                                            mem$QE,
+                                            ori$QE,
+                                            per$QE,
+                                            ver$QE),
+                                     QEp = c(att$QEp,
+                                             con$QEp,
+                                             exe$QEp,
+                                             mem$QEp,
+                                             ori$QEp,
+                                             per$QEp,
+                                             ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_predel_incl <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_predel_incl)
+```
+
+**Pre-existing delirium exclusion**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_predel_excl[["QM"]][[1]]` | `r meta_domain_sep_predel_excl[["QMp"]][[1]]` 
+`r domain_sep_predel_excl$domain[[1]]` | `r domain_sep_predel_excl$k[[1]]` | `r domain_sep_predel_excl$b[[1]]` | `r domain_sep_predel_excl$ci.lb[[1]]` - `r domain_sep_predel_excl$ci.ub[[1]]` | `r domain_sep_predel_excl$pval[[1]]` | `r domain_sep_predel_excl$tau2[[1]]` | `r domain_sep_predel_excl$se.tau2[[1]]` | `r domain_sep_predel_excl$I2[[1]]` | `r domain_sep_predel_excl$QE[[1]]` | `r domain_sep_predel_excl$QEp[[1]]`
+`r domain_sep_predel_excl$domain[[2]]` | `r domain_sep_predel_excl$k[[2]]` | `r domain_sep_predel_excl$b[[2]]` | `r domain_sep_predel_excl$ci.lb[[2]]` - `r domain_sep_predel_excl$ci.ub[[2]]` | `r domain_sep_predel_excl$pval[[2]]` | `r domain_sep_predel_excl$tau2[[2]]` | `r domain_sep_predel_excl$se.tau2[[2]]` | `r domain_sep_predel_excl$I2[[2]]` | `r domain_sep_predel_excl$QE[[2]]` | `r domain_sep_predel_excl$QEp[[2]]`
+`r domain_sep_predel_excl$domain[[3]]` | `r domain_sep_predel_excl$k[[3]]` | `r domain_sep_predel_excl$b[[3]]` | `r domain_sep_predel_excl$ci.lb[[3]]` - `r domain_sep_predel_excl$ci.ub[[3]]` | `r domain_sep_predel_excl$pval[[3]]` | `r domain_sep_predel_excl$tau2[[3]]` | `r domain_sep_predel_excl$se.tau2[[3]]` | `r domain_sep_predel_excl$I2[[3]]` | `r domain_sep_predel_excl$QE[[3]]` | `r domain_sep_predel_excl$QEp[[3]]`
+`r domain_sep_predel_excl$domain[[4]]` | `r domain_sep_predel_excl$k[[4]]` | `r domain_sep_predel_excl$b[[4]]` | `r domain_sep_predel_excl$ci.lb[[4]]` - `r domain_sep_predel_excl$ci.ub[[4]]` | `r domain_sep_predel_excl$pval[[4]]` | `r domain_sep_predel_excl$tau2[[4]]` | `r domain_sep_predel_excl$se.tau2[[4]]` | `r domain_sep_predel_excl$I2[[4]]` | `r domain_sep_predel_excl$QE[[4]]` | `r domain_sep_predel_excl$QEp[[4]]`
+`r domain_sep_predel_excl$domain[[5]]` | `r domain_sep_predel_excl$k[[5]]` | `r domain_sep_predel_excl$b[[5]]` | `r domain_sep_predel_excl$ci.lb[[5]]` - `r domain_sep_predel_excl$ci.ub[[5]]` | `r domain_sep_predel_excl$pval[[5]]` | `r domain_sep_predel_excl$tau2[[5]]` | `r domain_sep_predel_excl$se.tau2[[5]]` | `r domain_sep_predel_excl$I2[[5]]` | `r domain_sep_predel_excl$QE[[5]]` | `r domain_sep_predel_excl$QEp[[5]]`
+`r domain_sep_predel_excl$domain[[6]]` | `r domain_sep_predel_excl$k[[6]]` | `r domain_sep_predel_excl$b[[6]]` | `r domain_sep_predel_excl$ci.lb[[6]]` - `r domain_sep_predel_excl$ci.ub[[6]]` | `r domain_sep_predel_excl$pval[[6]]` | `r domain_sep_predel_excl$tau2[[6]]` | `r domain_sep_predel_excl$se.tau2[[6]]` | `r domain_sep_predel_excl$I2[[6]]` | `r domain_sep_predel_excl$QE[[6]]` | `r domain_sep_predel_excl$QEp[[6]]`
+
+
+**Pre-existing delirium no exclusion**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_predel_incl[["QM"]][[1]]` | `r meta_domain_sep_predel_incl[["QMp"]][[1]]` 
+`r domain_sep_predel_incl$domain[[1]]` | `r domain_sep_predel_incl$k[[1]]` | `r domain_sep_predel_incl$b[[1]]` | `r domain_sep_predel_incl$ci.lb[[1]]` - `r domain_sep_predel_incl$ci.ub[[1]]` | `r domain_sep_predel_incl$pval[[1]]` | `r domain_sep_predel_incl$tau2[[1]]` | `r domain_sep_predel_incl$se.tau2[[1]]` | `r domain_sep_predel_incl$I2[[1]]` | `r domain_sep_predel_incl$QE[[1]]` | `r domain_sep_predel_incl$QEp[[1]]`
+`r domain_sep_predel_incl$domain[[2]]` | `r domain_sep_predel_incl$k[[2]]` | `r domain_sep_predel_incl$b[[2]]` | `r domain_sep_predel_incl$ci.lb[[2]]` - `r domain_sep_predel_incl$ci.ub[[2]]` | `r domain_sep_predel_incl$pval[[2]]` | `r domain_sep_predel_incl$tau2[[2]]` | `r domain_sep_predel_incl$se.tau2[[2]]` | `r domain_sep_predel_incl$I2[[2]]` | `r domain_sep_predel_incl$QE[[2]]` | `r domain_sep_predel_incl$QEp[[2]]`
+`r domain_sep_predel_incl$domain[[3]]` | `r domain_sep_predel_incl$k[[3]]` | `r domain_sep_predel_incl$b[[3]]` | `r domain_sep_predel_incl$ci.lb[[3]]` - `r domain_sep_predel_incl$ci.ub[[3]]` | `r domain_sep_predel_incl$pval[[3]]` | `r domain_sep_predel_incl$tau2[[3]]` | `r domain_sep_predel_incl$se.tau2[[3]]` | `r domain_sep_predel_incl$I2[[3]]` | `r domain_sep_predel_incl$QE[[3]]` | `r domain_sep_predel_incl$QEp[[3]]`
+`r domain_sep_predel_incl$domain[[4]]` | `r domain_sep_predel_incl$k[[4]]` | `r domain_sep_predel_incl$b[[4]]` | `r domain_sep_predel_incl$ci.lb[[4]]` - `r domain_sep_predel_incl$ci.ub[[4]]` | `r domain_sep_predel_incl$pval[[4]]` | `r domain_sep_predel_incl$tau2[[4]]` | `r domain_sep_predel_incl$se.tau2[[4]]` | `r domain_sep_predel_incl$I2[[4]]` | `r domain_sep_predel_incl$QE[[4]]` | `r domain_sep_predel_incl$QEp[[4]]`
+`r domain_sep_predel_incl$domain[[5]]` | `r domain_sep_predel_incl$k[[5]]` | `r domain_sep_predel_incl$b[[5]]` | `r domain_sep_predel_incl$ci.lb[[5]]` - `r domain_sep_predel_incl$ci.ub[[5]]` | `r domain_sep_predel_incl$pval[[5]]` | `r domain_sep_predel_incl$tau2[[5]]` | `r domain_sep_predel_incl$se.tau2[[5]]` | `r domain_sep_predel_incl$I2[[5]]` | `r domain_sep_predel_incl$QE[[5]]` | `r domain_sep_predel_incl$QEp[[5]]`
+`r domain_sep_predel_incl$domain[[6]]` | `r domain_sep_predel_incl$k[[6]]` | `r domain_sep_predel_incl$b[[6]]` | `r domain_sep_predel_incl$ci.lb[[6]]` - `r domain_sep_predel_incl$ci.ub[[6]]` | `r domain_sep_predel_incl$pval[[6]]` | `r domain_sep_predel_incl$tau2[[6]]` | `r domain_sep_predel_incl$se.tau2[[6]]` | `r domain_sep_predel_incl$I2[[6]]` | `r domain_sep_predel_incl$QE[[6]]` | `r domain_sep_predel_incl$QEp[[6]]`
+`r domain_sep_predel_incl$domain[[7]]` | `r domain_sep_predel_incl$k[[7]]` | `r domain_sep_predel_incl$b[[7]]` | `r domain_sep_predel_incl$ci.lb[[7]]` - `r domain_sep_predel_incl$ci.ub[[7]]` | `r domain_sep_predel_incl$pval[[7]]` | `r domain_sep_predel_incl$tau2[[7]]` | `r domain_sep_predel_incl$se.tau2[[7]]` | `r domain_sep_predel_incl$I2[[7]]` | `r domain_sep_predel_incl$QE[[7]]` | `r domain_sep_predel_incl$QEp[[7]]`
+
+### Subgroup Analyses: Training of delirium assessors
+
+```{r del train subgroup, include="FALSE"}
+######Delirium assessors trained only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(del_assessors_trained == "yes") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_del_trained <- att
+con_del_trained <- con
+exe_del_trained <- exe
+mem_del_trained <- mem
+ori_del_trained <- ori
+per_del_trained <- per
+ver_del_trained <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_del_trained <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               coef(ori),
+                               coef(per),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               ori$k,
+                               per$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   ori$ci.lb,
+                                   per$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   ori$ci.ub,
+                                   per$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      ori$se,
+                                      per$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  ori$pval,
+                                  per$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    "Orientation",
+                                    "Perception",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  ori$tau2,
+                                  per$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     ori$se.tau2,
+                                     per$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                ori$I2,
+                                per$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                ori$QE,
+                                per$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 ori$QEp,
+                                 per$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_del_trained <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_del_trained)
+#test of difference between estimates (Wald-type test)
+
+######Delirium assessors NOT trained only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(del_assessors_trained == "no") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_del_nottrained <- att
+con_del_nottrained <- con
+exe_del_nottrained <- exe
+mem_del_nottrained <- mem
+ori_del_nottrained <- ori
+#per_del_nottrained <- per
+ver_del_nottrained <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_del_nottrained <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               coef(ori),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               ori$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   ori$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   ori$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      ori$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  ori$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    "Orientation",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  ori$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     ori$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                ori$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                ori$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 ori$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_del_nottrained <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_del_nottrained)
+```
+
+**Delirium assessors training specified**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_del_trained[["QM"]][[1]]` | `r meta_domain_sep_del_trained[["QMp"]][[1]]` 
+`r domain_sep_del_trained$domain[[1]]` | `r domain_sep_del_trained$k[[1]]` | `r domain_sep_del_trained$b[[1]]` | `r domain_sep_del_trained$ci.lb[[1]]` - `r domain_sep_del_trained$ci.ub[[1]]` | `r domain_sep_del_trained$pval[[1]]` | `r domain_sep_del_trained$tau2[[1]]` | `r domain_sep_del_trained$se.tau2[[1]]` | `r domain_sep_del_trained$I2[[1]]` | `r domain_sep_del_trained$QE[[1]]` | `r domain_sep_del_trained$QEp[[1]]`
+`r domain_sep_del_trained$domain[[2]]` | `r domain_sep_del_trained$k[[2]]` | `r domain_sep_del_trained$b[[2]]` | `r domain_sep_del_trained$ci.lb[[2]]` - `r domain_sep_del_trained$ci.ub[[2]]` | `r domain_sep_del_trained$pval[[2]]` | `r domain_sep_del_trained$tau2[[2]]` | `r domain_sep_del_trained$se.tau2[[2]]` | `r domain_sep_del_trained$I2[[2]]` | `r domain_sep_del_trained$QE[[2]]` | `r domain_sep_del_trained$QEp[[2]]`
+`r domain_sep_del_trained$domain[[3]]` | `r domain_sep_del_trained$k[[3]]` | `r domain_sep_del_trained$b[[3]]` | `r domain_sep_del_trained$ci.lb[[3]]` - `r domain_sep_del_trained$ci.ub[[3]]` | `r domain_sep_del_trained$pval[[3]]` | `r domain_sep_del_trained$tau2[[3]]` | `r domain_sep_del_trained$se.tau2[[3]]` | `r domain_sep_del_trained$I2[[3]]` | `r domain_sep_del_trained$QE[[3]]` | `r domain_sep_del_trained$QEp[[3]]`
+`r domain_sep_del_trained$domain[[4]]` | `r domain_sep_del_trained$k[[4]]` | `r domain_sep_del_trained$b[[4]]` | `r domain_sep_del_trained$ci.lb[[4]]` - `r domain_sep_del_trained$ci.ub[[4]]` | `r domain_sep_del_trained$pval[[4]]` | `r domain_sep_del_trained$tau2[[4]]` | `r domain_sep_del_trained$se.tau2[[4]]` | `r domain_sep_del_trained$I2[[4]]` | `r domain_sep_del_trained$QE[[4]]` | `r domain_sep_del_trained$QEp[[4]]`
+`r domain_sep_del_trained$domain[[5]]` | `r domain_sep_del_trained$k[[5]]` | `r domain_sep_del_trained$b[[5]]` | `r domain_sep_del_trained$ci.lb[[5]]` - `r domain_sep_del_trained$ci.ub[[5]]` | `r domain_sep_del_trained$pval[[5]]` | `r domain_sep_del_trained$tau2[[5]]` | `r domain_sep_del_trained$se.tau2[[5]]` | `r domain_sep_del_trained$I2[[5]]` | `r domain_sep_del_trained$QE[[5]]` | `r domain_sep_del_trained$QEp[[5]]`
+`r domain_sep_del_trained$domain[[6]]` | `r domain_sep_del_trained$k[[6]]` | `r domain_sep_del_trained$b[[6]]` | `r domain_sep_del_trained$ci.lb[[6]]` - `r domain_sep_del_trained$ci.ub[[6]]` | `r domain_sep_del_trained$pval[[6]]` | `r domain_sep_del_trained$tau2[[6]]` | `r domain_sep_del_trained$se.tau2[[6]]` | `r domain_sep_del_trained$I2[[6]]` | `r domain_sep_del_trained$QE[[6]]` | `r domain_sep_del_trained$QEp[[6]]`
+`r domain_sep_del_trained$domain[[7]]` | `r domain_sep_del_trained$k[[7]]` | `r domain_sep_del_trained$b[[7]]` | `r domain_sep_del_trained$ci.lb[[7]]` - `r domain_sep_del_trained$ci.ub[[7]]` | `r domain_sep_del_trained$pval[[7]]` | `r domain_sep_del_trained$tau2[[7]]` | `r domain_sep_del_trained$se.tau2[[7]]` | `r domain_sep_del_trained$I2[[7]]` | `r domain_sep_del_trained$QE[[7]]` | `r domain_sep_del_trained$QEp[[7]]`
+
+
+**Delirium assessors training not specified**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_del_nottrained[["QM"]][[1]]` | `r meta_domain_sep_del_nottrained[["QMp"]][[1]]` 
+`r domain_sep_del_nottrained$domain[[1]]` | `r domain_sep_del_nottrained$k[[1]]` | `r domain_sep_del_nottrained$b[[1]]` | `r domain_sep_del_nottrained$ci.lb[[1]]` - `r domain_sep_del_nottrained$ci.ub[[1]]` | `r domain_sep_del_nottrained$pval[[1]]` | `r domain_sep_del_nottrained$tau2[[1]]` | `r domain_sep_del_nottrained$se.tau2[[1]]` | `r domain_sep_del_nottrained$I2[[1]]` | `r domain_sep_del_nottrained$QE[[1]]` | `r domain_sep_del_nottrained$QEp[[1]]`
+`r domain_sep_del_nottrained$domain[[2]]` | `r domain_sep_del_nottrained$k[[2]]` | `r domain_sep_del_nottrained$b[[2]]` | `r domain_sep_del_nottrained$ci.lb[[2]]` - `r domain_sep_del_nottrained$ci.ub[[2]]` | `r domain_sep_del_nottrained$pval[[2]]` | `r domain_sep_del_nottrained$tau2[[2]]` | `r domain_sep_del_nottrained$se.tau2[[2]]` | `r domain_sep_del_nottrained$I2[[2]]` | `r domain_sep_del_nottrained$QE[[2]]` | `r domain_sep_del_nottrained$QEp[[2]]`
+`r domain_sep_del_nottrained$domain[[3]]` | `r domain_sep_del_nottrained$k[[3]]` | `r domain_sep_del_nottrained$b[[3]]` | `r domain_sep_del_nottrained$ci.lb[[3]]` - `r domain_sep_del_nottrained$ci.ub[[3]]` | `r domain_sep_del_nottrained$pval[[3]]` | `r domain_sep_del_nottrained$tau2[[3]]` | `r domain_sep_del_nottrained$se.tau2[[3]]` | `r domain_sep_del_nottrained$I2[[3]]` | `r domain_sep_del_nottrained$QE[[3]]` | `r domain_sep_del_nottrained$QEp[[3]]`
+`r domain_sep_del_nottrained$domain[[4]]` | `r domain_sep_del_nottrained$k[[4]]` | `r domain_sep_del_nottrained$b[[4]]` | `r domain_sep_del_nottrained$ci.lb[[4]]` - `r domain_sep_del_nottrained$ci.ub[[4]]` | `r domain_sep_del_nottrained$pval[[4]]` | `r domain_sep_del_nottrained$tau2[[4]]` | `r domain_sep_del_nottrained$se.tau2[[4]]` | `r domain_sep_del_nottrained$I2[[4]]` | `r domain_sep_del_nottrained$QE[[4]]` | `r domain_sep_del_nottrained$QEp[[4]]`
+`r domain_sep_del_nottrained$domain[[5]]` | `r domain_sep_del_nottrained$k[[5]]` | `r domain_sep_del_nottrained$b[[5]]` | `r domain_sep_del_nottrained$ci.lb[[5]]` - `r domain_sep_del_nottrained$ci.ub[[5]]` | `r domain_sep_del_nottrained$pval[[5]]` | `r domain_sep_del_nottrained$tau2[[5]]` | `r domain_sep_del_nottrained$se.tau2[[5]]` | `r domain_sep_del_nottrained$I2[[5]]` | `r domain_sep_del_nottrained$QE[[5]]` | `r domain_sep_del_nottrained$QEp[[5]]`
+`r domain_sep_del_nottrained$domain[[6]]` | `r domain_sep_del_nottrained$k[[6]]` | `r domain_sep_del_nottrained$b[[6]]` | `r domain_sep_del_nottrained$ci.lb[[6]]` - `r domain_sep_del_nottrained$ci.ub[[6]]` | `r domain_sep_del_nottrained$pval[[6]]` | `r domain_sep_del_nottrained$tau2[[6]]` | `r domain_sep_del_nottrained$se.tau2[[6]]` | `r domain_sep_del_nottrained$I2[[6]]` | `r domain_sep_del_nottrained$QE[[6]]` | `r domain_sep_del_nottrained$QEp[[6]]`
+
+### Subgroup Analyses: Precipitant to delirium
+
+```{r precipitant subgroup, include="FALSE"}
+######cardiac surgery only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(precipitant == "cardiac") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#ori <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_cardiac <- att
+con_cardiac <- con
+exe_cardiac <- exe
+mem_cardiac <- mem
+#ori_cardiac <- ori
+#per_cardiac <- per
+ver_cardiac <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_cardiac <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               #coef(ori),
+                               #coef(per),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               #ori$k,
+                               #per$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   #ori$ci.lb,
+                                   #per$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   #ori$ci.ub,
+                                   #per$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      #ori$se,
+                                      #per$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  #ori$pval,
+                                  #per$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    #"Orientation",
+                                    #"Perception",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  #ori$tau2,
+                                  #per$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     #ori$se.tau2,
+                                     #per$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                #ori$I2,
+                                #per$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                #ori$QE,
+                                #per$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 #ori$QEp,
+                                 #per$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_cardiac <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_cardiac)
+#test of difference between estimates (Wald-type test)
+
+###### Noncardiac surgery only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(precipitant == "noncardiac") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_noncardiac <- att
+con_noncardiac <- con
+exe_noncardiac <- exe
+mem_noncardiac <- mem
+ori_noncardiac <- ori
+per_noncardiac <- per
+ver_noncardiac <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_noncardiac <- data.frame(b = c(coef(att), 
+                               coef(con),
+                               coef(exe),
+                               coef(mem),
+                               coef(ori),
+                               coef(per),
+                               coef(ver)),
+                         k = c(att$k,
+                               con$k,
+                               exe$k,
+                               mem$k,
+                               ori$k,
+                               per$k,
+                               ver$k),
+                         ci.lb = c(att$ci.lb,
+                                   con$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb,
+                                   ori$ci.lb,
+                                   per$ci.lb,
+                                   ver$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   con$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub,
+                                   ori$ci.ub,
+                                   per$ci.ub,
+                                   ver$ci.ub),
+                         stderror = c(att$se,
+                                      con$se,
+                                      exe$se,
+                                      mem$se,
+                                      ori$se,
+                                      per$se,
+                                      ver$se),
+                         pval = c(att$pval,
+                                  con$pval,
+                                  exe$pval,
+                                  mem$pval,
+                                  ori$pval,
+                                  per$pval,
+                                  ver$pval),
+                         domain = c("Attention",
+                                    "Construction & Motor Performance",
+                                    "Executive Functions",
+                                    "Memory",
+                                    "Orientation",
+                                    "Perception",
+                                    "Verbal Functions & Language Skills"),
+                         tau2 = c(att$tau2,
+                                  con$tau2,
+                                  exe$tau2,
+                                  mem$tau2,
+                                  ori$tau2,
+                                  per$tau2,
+                                  ver$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     con$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2,
+                                     ori$se.tau2,
+                                     per$se.tau2,
+                                     ver$se.tau2),
+                         I2 = c(att$I2,
+                                con$I2,
+                                exe$I2,
+                                mem$I2,
+                                ori$I2,
+                                per$I2,
+                                ver$I2),
+                         QE = c(att$QE,
+                                con$QE,
+                                exe$QE,
+                                mem$QE,
+                                ori$QE,
+                                per$QE,
+                                ver$QE),
+                         QEp = c(att$QEp,
+                                 con$QEp,
+                                 exe$QEp,
+                                 mem$QEp,
+                                 ori$QEp,
+                                 per$QEp,
+                                 ver$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_noncardiac <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_noncardiac)
+
+###### Procedure only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(precipitant == "procedure") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#ori <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#rename for summaries
+att_procedure <- att
+#con_procedure <- con
+exe_procedure <- exe
+mem_procedure <- mem
+#ori_procedure <- ori
+#per_procedure <- per
+#ver_procedure <- ver
+
+#add all estimates and model information for individual domain meta-analyses into one data frame
+domain_sep_procedure <- data.frame(b = c(coef(att), 
+                               coef(exe),
+                               coef(mem)),
+                         k = c(att$k,
+                               exe$k,
+                               mem$k),
+                         ci.lb = c(att$ci.lb,
+                                   exe$ci.lb,
+                                   mem$ci.lb),
+                         ci.ub = c(att$ci.ub,
+                                   exe$ci.ub,
+                                   mem$ci.ub),
+                         stderror = c(att$se,
+                                      exe$se,
+                                      mem$se),
+                         pval = c(att$pval,
+                                  exe$pval,
+                                  mem$pval),
+                         domain = c("Attention",
+                                    "Executive Functions",
+                                    "Memory"),
+                         tau2 = c(att$tau2,
+                                  exe$tau2,
+                                  mem$tau2),
+                         se.tau2 = c(att$se.tau2,
+                                     exe$se.tau2,
+                                     mem$se.tau2),
+                         I2 = c(att$I2,
+                                exe$I2,
+                                mem$I2),
+                         QE = c(att$QE,
+                                exe$QE,
+                                mem$QE),
+                         QEp = c(att$QEp,
+                                 exe$QEp,
+                                 mem$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_procedure <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_procedure)
+
+###### Nonoperative only#######
+#set up data file for domain analysis
+data_domain <- meta_data_cog %>%
+  filter(data_type == "quant_mean_sd" | data_type == "quant_count" | data_type == "or" | data_type == "chi_square") %>%
+  group_by(covidence_study_id, cog_domain_lezak) %>% #group by study/domain so future calculations are done within each domain within each study
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study/domain, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study/domain only appear on one row
+  ungroup() %>%
+  filter(precipitant == "nonoperative") %>% #DEFINE THIS TO DEFINE THE SUBGROUP OF INTEREST
+  group_by(cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1
+  mutate(cog_domain_n = n()) %>% #count n rows for each domain
+  filter(cog_domain_n != 1) %>% #remove any domains where k = 1
+  ungroup()
+
+#run analyses for each cognitive domain with k>1
+#att <- rma(data = data_domain, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#con <- rma(data = data_domain, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#exe <- rma(data = data_domain, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#mem <- rma(data = data_domain, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori_nonoperative <- rma(data = data_domain, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = data_domain, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#ver <- rma(data = data_domain, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+#no need for FE comparison of subgroups as only one subgroup able to be meta-analysed
+```
+
+**Cardiac surgery subgroup**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_cardiac[["QM"]][[1]]` | `r meta_domain_sep_cardiac[["QMp"]][[1]]` 
+`r domain_sep_cardiac$domain[[1]]` | `r domain_sep_cardiac$k[[1]]` | `r domain_sep_cardiac$b[[1]]` | `r domain_sep_cardiac$ci.lb[[1]]` - `r domain_sep_cardiac$ci.ub[[1]]` | `r domain_sep_cardiac$pval[[1]]` | `r domain_sep_cardiac$tau2[[1]]` | `r domain_sep_cardiac$se.tau2[[1]]` | `r domain_sep_cardiac$I2[[1]]` | `r domain_sep_cardiac$QE[[1]]` | `r domain_sep_cardiac$QEp[[1]]`
+`r domain_sep_cardiac$domain[[2]]` | `r domain_sep_cardiac$k[[2]]` | `r domain_sep_cardiac$b[[2]]` | `r domain_sep_cardiac$ci.lb[[2]]` - `r domain_sep_cardiac$ci.ub[[2]]` | `r domain_sep_cardiac$pval[[2]]` | `r domain_sep_cardiac$tau2[[2]]` | `r domain_sep_cardiac$se.tau2[[2]]` | `r domain_sep_cardiac$I2[[2]]` | `r domain_sep_cardiac$QE[[2]]` | `r domain_sep_cardiac$QEp[[2]]`
+`r domain_sep_cardiac$domain[[3]]` | `r domain_sep_cardiac$k[[3]]` | `r domain_sep_cardiac$b[[3]]` | `r domain_sep_cardiac$ci.lb[[3]]` - `r domain_sep_cardiac$ci.ub[[3]]` | `r domain_sep_cardiac$pval[[3]]` | `r domain_sep_cardiac$tau2[[3]]` | `r domain_sep_cardiac$se.tau2[[3]]` | `r domain_sep_cardiac$I2[[3]]` | `r domain_sep_cardiac$QE[[3]]` | `r domain_sep_cardiac$QEp[[3]]`
+`r domain_sep_cardiac$domain[[4]]` | `r domain_sep_cardiac$k[[4]]` | `r domain_sep_cardiac$b[[4]]` | `r domain_sep_cardiac$ci.lb[[4]]` - `r domain_sep_cardiac$ci.ub[[4]]` | `r domain_sep_cardiac$pval[[4]]` | `r domain_sep_cardiac$tau2[[4]]` | `r domain_sep_cardiac$se.tau2[[4]]` | `r domain_sep_cardiac$I2[[4]]` | `r domain_sep_cardiac$QE[[4]]` | `r domain_sep_cardiac$QEp[[4]]`
+`r domain_sep_cardiac$domain[[5]]` | `r domain_sep_cardiac$k[[5]]` | `r domain_sep_cardiac$b[[5]]` | `r domain_sep_cardiac$ci.lb[[5]]` - `r domain_sep_cardiac$ci.ub[[5]]` | `r domain_sep_cardiac$pval[[5]]` | `r domain_sep_cardiac$tau2[[5]]` | `r domain_sep_cardiac$se.tau2[[5]]` | `r domain_sep_cardiac$I2[[5]]` | `r domain_sep_cardiac$QE[[5]]` | `r domain_sep_cardiac$QEp[[5]]`
+
+
+**Noncardiac surgery subgroup**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_noncardiac[["QM"]][[1]]` | `r meta_domain_sep_noncardiac[["QMp"]][[1]]` 
+`r domain_sep_noncardiac$domain[[1]]` | `r domain_sep_noncardiac$k[[1]]` | `r domain_sep_noncardiac$b[[1]]` | `r domain_sep_noncardiac$ci.lb[[1]]` - `r domain_sep_noncardiac$ci.ub[[1]]` | `r domain_sep_noncardiac$pval[[1]]` | `r domain_sep_noncardiac$tau2[[1]]` | `r domain_sep_noncardiac$se.tau2[[1]]` | `r domain_sep_noncardiac$I2[[1]]` | `r domain_sep_noncardiac$QE[[1]]` | `r domain_sep_noncardiac$QEp[[1]]`
+`r domain_sep_noncardiac$domain[[2]]` | `r domain_sep_noncardiac$k[[2]]` | `r domain_sep_noncardiac$b[[2]]` | `r domain_sep_noncardiac$ci.lb[[2]]` - `r domain_sep_noncardiac$ci.ub[[2]]` | `r domain_sep_noncardiac$pval[[2]]` | `r domain_sep_noncardiac$tau2[[2]]` | `r domain_sep_noncardiac$se.tau2[[2]]` | `r domain_sep_noncardiac$I2[[2]]` | `r domain_sep_noncardiac$QE[[2]]` | `r domain_sep_noncardiac$QEp[[2]]`
+`r domain_sep_noncardiac$domain[[3]]` | `r domain_sep_noncardiac$k[[3]]` | `r domain_sep_noncardiac$b[[3]]` | `r domain_sep_noncardiac$ci.lb[[3]]` - `r domain_sep_noncardiac$ci.ub[[3]]` | `r domain_sep_noncardiac$pval[[3]]` | `r domain_sep_noncardiac$tau2[[3]]` | `r domain_sep_noncardiac$se.tau2[[3]]` | `r domain_sep_noncardiac$I2[[3]]` | `r domain_sep_noncardiac$QE[[3]]` | `r domain_sep_noncardiac$QEp[[3]]`
+`r domain_sep_noncardiac$domain[[4]]` | `r domain_sep_noncardiac$k[[4]]` | `r domain_sep_noncardiac$b[[4]]` | `r domain_sep_noncardiac$ci.lb[[4]]` - `r domain_sep_noncardiac$ci.ub[[4]]` | `r domain_sep_noncardiac$pval[[4]]` | `r domain_sep_noncardiac$tau2[[4]]` | `r domain_sep_noncardiac$se.tau2[[4]]` | `r domain_sep_noncardiac$I2[[4]]` | `r domain_sep_noncardiac$QE[[4]]` | `r domain_sep_noncardiac$QEp[[4]]`
+`r domain_sep_noncardiac$domain[[5]]` | `r domain_sep_noncardiac$k[[5]]` | `r domain_sep_noncardiac$b[[5]]` | `r domain_sep_noncardiac$ci.lb[[5]]` - `r domain_sep_noncardiac$ci.ub[[5]]` | `r domain_sep_noncardiac$pval[[5]]` | `r domain_sep_noncardiac$tau2[[5]]` | `r domain_sep_noncardiac$se.tau2[[5]]` | `r domain_sep_noncardiac$I2[[5]]` | `r domain_sep_noncardiac$QE[[5]]` | `r domain_sep_noncardiac$QEp[[5]]`
+`r domain_sep_noncardiac$domain[[6]]` | `r domain_sep_noncardiac$k[[6]]` | `r domain_sep_noncardiac$b[[6]]` | `r domain_sep_noncardiac$ci.lb[[6]]` - `r domain_sep_noncardiac$ci.ub[[6]]` | `r domain_sep_noncardiac$pval[[6]]` | `r domain_sep_noncardiac$tau2[[6]]` | `r domain_sep_noncardiac$se.tau2[[6]]` | `r domain_sep_noncardiac$I2[[6]]` | `r domain_sep_noncardiac$QE[[6]]` | `r domain_sep_noncardiac$QEp[[6]]`
+`r domain_sep_noncardiac$domain[[7]]` | `r domain_sep_noncardiac$k[[7]]` | `r domain_sep_noncardiac$b[[7]]` | `r domain_sep_noncardiac$ci.lb[[7]]` - `r domain_sep_noncardiac$ci.ub[[7]]` | `r domain_sep_noncardiac$pval[[7]]` | `r domain_sep_noncardiac$tau2[[7]]` | `r domain_sep_noncardiac$se.tau2[[7]]` | `r domain_sep_noncardiac$I2[[7]]` | `r domain_sep_noncardiac$QE[[7]]` | `r domain_sep_noncardiac$QEp[[7]]`
+
+
+**Procedure subgroup**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_procedure[["QM"]][[1]]` | `r meta_domain_sep_procedure[["QMp"]][[1]]` 
+`r domain_sep_procedure$domain[[1]]` | `r domain_sep_procedure$k[[1]]` | `r domain_sep_procedure$b[[1]]` | `r domain_sep_procedure$ci.lb[[1]]` - `r domain_sep_procedure$ci.ub[[1]]` | `r domain_sep_procedure$pval[[1]]` | `r domain_sep_procedure$tau2[[1]]` | `r domain_sep_procedure$se.tau2[[1]]` | `r domain_sep_procedure$I2[[1]]` | `r domain_sep_procedure$QE[[1]]` | `r domain_sep_procedure$QEp[[1]]`
+`r domain_sep_procedure$domain[[2]]` | `r domain_sep_procedure$k[[2]]` | `r domain_sep_procedure$b[[2]]` | `r domain_sep_procedure$ci.lb[[2]]` - `r domain_sep_procedure$ci.ub[[2]]` | `r domain_sep_procedure$pval[[2]]` | `r domain_sep_procedure$tau2[[2]]` | `r domain_sep_procedure$se.tau2[[2]]` | `r domain_sep_procedure$I2[[2]]` | `r domain_sep_procedure$QE[[2]]` | `r domain_sep_procedure$QEp[[2]]`
+`r domain_sep_procedure$domain[[3]]` | `r domain_sep_procedure$k[[3]]` | `r domain_sep_procedure$b[[3]]` | `r domain_sep_procedure$ci.lb[[3]]` - `r domain_sep_procedure$ci.ub[[3]]` | `r domain_sep_procedure$pval[[3]]` | `r domain_sep_procedure$tau2[[3]]` | `r domain_sep_procedure$se.tau2[[3]]` | `r domain_sep_procedure$I2[[3]]` | `r domain_sep_procedure$QE[[3]]` | `r domain_sep_procedure$QEp[[3]]`
+
+**Non-operative subgroup**
+
+domain | k | estimate | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM (for FE comparison) | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+Orientation | `r ori_nonoperative$k` | `r ori_nonoperative$b` | `r ori_nonoperative$ci.lb` - `r ori_nonoperative$ci.ub` | `r ori_nonoperative$pval` | `r ori_nonoperative$tau2` | `r ori_nonoperative$se.tau2` | `r ori_nonoperative$I2` | `r ori_nonoperative$QE` | `r ori_nonoperative$QEp`
+
+### Subgroup Analyses: Delirium motor subtypes
+
+```{r subtypes subgroup, include=FALSE}
+#set up data file
+meta_data_subtype <- prac_data %>%
+  filter(analysis == "subtype") %>%
+  mutate(g_trans = ifelse(test_direction == "Negative", g*-1, g), #add in adjustment for negatively coded tests (*-1)
+         or_trans = ifelse(test_direction == "Negative", or*-1, or)) %>% #add in adjustment for negatively coded tests (*-1)
+  group_by(covidence_study_id, del_subtype, cog_domain_lezak) %>%
+  mutate(g_trans = mean(g_trans, na.rm = T),
+         g_sei = mean(g_sei, na.rm = T)) %>% #obtain average g and st err within each study, removing NAs from calculation
+  filter(row_number()==1) %>% #make each study only appear on one row
+  group_by(del_subtype, cog_domain_lezak) %>% #set up to remove any cases of cog domain where k = 1 (within each sensitivity analysis)
+  mutate(cog_test_n = n()) %>% #count n rows for each domain
+  filter(cog_test_n != 1) %>% #remove any domains where k = 1
+  ungroup() %>%
+  filter(del_subtype == "hypoactive")
+
+
+#create data frame with k for each cog test
+k_meta_subtype <- meta_data_subtype %>%
+  filter(del_subtype == "hypoactive") %>%
+  arrange(cog_domain_lezak) %>%
+  group_by(cog_domain_lezak) %>%
+  mutate(row = row_number()) %>%
+  filter(row == 1) %>%
+  ungroup() %>%
+  mutate(k = cog_test_n) %>%
+  select(cog_domain_lezak, k)
+
+att <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Attention"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+con <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Construction & Motor Performance"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#exe <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Executive Functions"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#mem <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Memory"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+ori <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Orientation"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#per <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Perception"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+#ver <- rma(data = meta_data_subtype, subset = (cog_domain_lezak == "Verbal Functions & Language Skills"), yi = g_trans, sei = g_sei, method = "PM", test = "knha")
+
+
+att_subtype <- att
+con_subtype <- con
+#exe_subtype <- exe
+#mem_subtype <- mem
+ori_subtype <- ori
+#per_subtype <- per
+#ver_subtype <- ver
+
+domain_sep_subtype <- data.frame(b = c(coef(att), 
+                                           coef(con),
+                                           #coef(exe),
+                                           #coef(mem),
+                                           coef(ori)),
+                                     k = c(att$k,
+                                           con$k,
+                                           #exe$k,
+                                           #mem$k,
+                                           ori$k),
+                                     ci.lb = c(att$ci.lb,
+                                               con$ci.lb,
+                                               #exe$ci.lb,
+                                               #mem$ci.lb,
+                                               ori$ci.lb),
+                                     ci.ub = c(att$ci.ub,
+                                               con$ci.ub,
+                                               #exe$ci.ub,
+                                               #mem$ci.ub,
+                                               ori$ci.ub),
+                                     stderror = c(att$se,
+                                                  con$se,
+                                                  #exe$se,
+                                                  #mem$se,
+                                                  ori$se),
+                                     pval = c(att$pval,
+                                              con$pval,
+                                              #exe$pval,
+                                              #mem$pval,
+                                              ori$pval),
+                                     domain = c("Attention",
+                                                "Construction & Motor Performance",
+                                                #"Executive Functions",
+                                                #"Memory",
+                                                "Orientation"),
+                                     tau2 = c(att$tau2,
+                                              con$tau2,
+                                              #exe$tau2,
+                                              #mem$tau2,
+                                              ori$tau2),
+                                     se.tau2 = c(att$se.tau2,
+                                                 con$se.tau2,
+                                                 #exe$se.tau2,
+                                                 #mem$se.tau2,
+                                                 ori$se.tau2),
+                                     I2 = c(att$I2,
+                                            con$I2,
+                                            #exe$I2,
+                                            #mem$I2,
+                                            ori$I2),
+                                     QE = c(att$QE,
+                                            con$QE,
+                                            #exe$QE,
+                                            #mem$QE,
+                                            ori$QE),
+                                     QEp = c(att$QEp,
+                                             con$QEp,
+                                             #exe$QEp,
+                                             #mem$QEp,
+                                             ori$QEp))
+
+#compare domains (with fixed effects model)
+meta_domain_sep_subtype <- rma(b, sei = stderror, mods = ~domain, method = "FE", data = domain_sep_subtype)
+#test of difference between estimates (Wald-type test)
+```
+
+
+**Delirium subtypes**
+
+domain | k | g | 95% CI | p | tau^2^ | tau^2^ SE | I^2^ | QE/QM | Q p-val
+---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- 
+FE comparison of subgroups | | | | | | | | `r meta_domain_sep_subtype[["QM"]][[1]]` | `r meta_domain_sep_subtype[["QMp"]][[1]]` 
+`r domain_sep_subtype$domain[[1]]` | `r domain_sep_subtype$k[[1]]` | `r domain_sep_subtype$b[[1]]` | `r domain_sep_subtype$ci.lb[[1]]` - `r domain_sep_subtype$ci.ub[[1]]` | `r domain_sep_subtype$pval[[1]]` | `r domain_sep_subtype$tau2[[1]]` | `r domain_sep_subtype$se.tau2[[1]]` | `r domain_sep_subtype$I2[[1]]` | `r domain_sep_subtype$QE[[1]]` | `r domain_sep_subtype$QEp[[1]]`
+`r domain_sep_subtype$domain[[2]]` | `r domain_sep_subtype$k[[2]]` | `r domain_sep_subtype$b[[2]]` | `r domain_sep_subtype$ci.lb[[2]]` - `r domain_sep_subtype$ci.ub[[2]]` | `r domain_sep_subtype$pval[[2]]` | `r domain_sep_subtype$tau2[[2]]` | `r domain_sep_subtype$se.tau2[[2]]` | `r domain_sep_subtype$I2[[2]]` | `r domain_sep_subtype$QE[[2]]` | `r domain_sep_subtype$QEp[[2]]`
+`r domain_sep_subtype$domain[[3]]` | `r domain_sep_subtype$k[[3]]` | `r domain_sep_subtype$b[[3]]` | `r domain_sep_subtype$ci.lb[[3]]` - `r domain_sep_subtype$ci.ub[[3]]` | `r domain_sep_subtype$pval[[3]]` | `r domain_sep_subtype$tau2[[3]]` | `r domain_sep_subtype$se.tau2[[3]]` | `r domain_sep_subtype$I2[[3]]` | `r domain_sep_subtype$QE[[3]]` | `r domain_sep_subtype$QEp[[3]]`
+
