@@ -11,9 +11,8 @@ Ghezzi ES, Ross TJ, Sharman R, Davis D, Boord MS, Thanabalan T, Thomas J, Keage 
 - "meta_analysis.Rmd" - R markdown file used to create "meta_analysis.md" (contains "meta_analysis.R" code and code for summary tables).
 
 ## Subgroup analysis files:
-- "subgroup_analysis.R" - R file containing entire code for subgroup analyses.
 - "subgroup_analysis.md" - Markdown file containing summary tables for subgroup analyses. 
-- "subgroup_analysis.Rmd" - R markdown file used to create "subgroup_analysis.md" (contains "subgroup_analysis.R" code and code for summary tables).
+- "subgroup_analysis.Rmd" - R markdown file used to create "subgroup_analysis.md" (contains R code for subgroup analyses and code for summary tables).
 
 ## Data files:
 - "data.csv" - Data file used for analysis. 
