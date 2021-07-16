@@ -1,8 +1,8 @@
 ---
 title: "meta_analysis"
 output: 
-html_document:
-keep_md: true
+  html_document:
+    keep_md: yes
 ---
 
 ```{r setup, include="FALSE"}
@@ -29,8 +29,6 @@ knitr::knit_hooks$set(inline = function(x) {
 ```
 
 ```{r meta analysis, include= "FALSE"}
-####Neuropsychology of Delirium Meta-analysis######
-
 ####Neuropsychology of Delirium Meta-analysis######
 
 #load packages
