@@ -406,7 +406,7 @@ forest(forest, #specify data
        slab = paste(forest_domain$author, forest_domain$year, sep = ", "), #study labels
        xlim=c(-4, 2), at=c(-3,-2,-1,0,1),
        alim=c(-3,1),
-       cex=1, 
+       cex=0.9, 
        order = forest_domain$row_n, #order rows based on previous calculation
        ylim = c(-1,128),
        rows=c(3:15,20:23,28:33,38:56,61:75,80:89,94:124), #specify rows for each effect size to occupy (separate for each cognitive domain, with 5 rows in between each)
@@ -418,23 +418,23 @@ forest(forest, #specify data
 #add horizontal line at y=0
 abline(h=0)
 #add summary stats for global cognition model (RE model)
-text(2, -1, cex = 1, pos = 2, bquote(paste(.(formatC(meta_allcog$b, digits = 2, format = "f")), " [", .(formatC(meta_allcog$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(meta_allcog$ci.ub, digits = 2, format = "f")), "]")))
+text(2, -1, cex = 0.9, pos = 2, bquote(paste(.(formatC(meta_allcog$b, digits = 2, format = "f")), " [", .(formatC(meta_allcog$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(meta_allcog$ci.ub, digits = 2, format = "f")), "]")))
 #add overall summary polygon for global cognition model (RE model)
-addpoly.default(x = meta_allcog$b, sei = meta_allcog$se, row = -1, cex = 1, mlab = "", efac = 0.5, annotate = F)
+addpoly.default(x = meta_allcog$b, sei = meta_allcog$se, row = -1, cex = 0.9, mlab = "", efac = 0.5, annotate = F)
 
 
 #add text for dfs, p, and I2 for global cognition model (RE model)
-text(-4,-1, pos = 4, cex = 1, bquote(paste("RE Model for Global Cognition (df = ", .(meta_allcog$k - meta_allcog$p), ", p < 0.001; ", I^2, " = ",
+text(-4,-1, pos = 4, cex = 0.9, bquote(paste("RE Model for Global Cognition (df = ", .(meta_allcog$k - meta_allcog$p), ", p < 0.001; ", I^2, " = ",
                                            .(formatC(meta_allcog$I2, digits = 1, format = "f")), "%)")))
 
 #add text for the test of subgroup differences (FE model)
-text(-4, -2.5, pos=4, cex=1, bquote(paste("Test for Subgroup Differences (FE Model): ",
+text(-4, -2.5, pos=4, cex=0.9, bquote(paste("Test for Subgroup Differences (FE Model): ",
                                               Q[M], " = ", .(formatC(meta_domain_sep$QM, digits=2, format="f")), ", df = ", .(meta_domain_sep$p - 1),
                                               ", p = ", .(formatC(meta_domain_sep$QMp, digits=3, format="f")))))
 
 ### set font expansion factor (as in forest() above) and use bold italic
 ### font and save original settings in object 'op'
-op <- par(cex=1, font=4)
+op <- par(cex=0.9, font=4)
 
 #add subheadings for the subgroups (1 point above the last row of data for each subgroup)
 text(-4, c(125,90,76,57,34,24,16), pos = 4, c("Attention",
@@ -444,7 +444,7 @@ text(-4, c(125,90,76,57,34,24,16), pos = 4, c("Attention",
                                               "Orientation",
                                               "Perception",
                                               "Verbal Functions & Language Skills"))
-op <- par(cex=1, font=2)
+op <- par(cex=0.9, font=2)
 #add subheadings for the 'Overall' effect size for each subgroup (1.5 points before the first row of data for each subgroup)
 text(-4, c(92.5,78.5,59.5,36.5,26.5,18.5,1.5), pos=4, "Overall", col = "red")
 
