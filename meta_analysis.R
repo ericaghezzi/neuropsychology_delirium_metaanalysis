@@ -9,7 +9,7 @@ library(tidyverse)
 library(metafor)
 
 #set working directory
-setwd("U:/neuropsych_delirium_metaanalysis")
+setwd("R:/GitHub/neuropsych_delirium_metaanalysis/")
 
 #import data
 data <- read_csv("data.csv", col_types = cols(g = col_number(),
@@ -408,8 +408,8 @@ forest(forest, #specify data
        alim=c(-3,1),
        cex=0.9, 
        order = forest_domain$row_n, #order rows based on previous calculation
-       ylim = c(-1,128),
-       rows=c(3:15,20:23,28:33,38:56,61:75,80:89,94:124), #specify rows for each effect size to occupy (separate for each cognitive domain, with 5 rows in between each)
+       ylim = c(-1,127),
+       rows=c(3:15,20:23,28:32,37:55,60:74,79:88,93:123), #specify rows for each effect size to occupy (separate for each cognitive domain, with 5 rows in between each)
        xlab="Hedges' g", mlab="", psize=1, 
        header=c("Lead author, Year", "Hedges' g [95% CI]"),
        addfit = F,
@@ -437,7 +437,7 @@ text(-4, -2.5, pos=4, cex=0.9, bquote(paste("Test for Subgroup Differences (FE M
 op <- par(cex=0.9, font=4)
 
 #add subheadings for the subgroups (1 point above the last row of data for each subgroup)
-text(-4, c(125,90,76,57,34,24,16), pos = 4, c("Attention",
+text(-4, c(124,89,75,56,33,24,16), pos = 4, c("Attention",
                                               "Construction & Motor Performance",
                                               "Executive Functions",
                                               "Memory",
@@ -446,23 +446,23 @@ text(-4, c(125,90,76,57,34,24,16), pos = 4, c("Attention",
                                               "Verbal Functions & Language Skills"))
 op <- par(cex=0.9, font=2)
 #add subheadings for the 'Overall' effect size for each subgroup (1.5 points before the first row of data for each subgroup)
-text(-4, c(92.5,78.5,59.5,36.5,26.5,18.5,1.5), pos=4, "Overall", col = "red")
+text(-4, c(91.5,77.5,58.5,35.5,26.5,18.5,1.5), pos=4, "Overall", col = "red")
 
 #add summary polygons for the subgroups (1.5 points before the first row of data for each subgroup)
-addpoly.default(x = att$b, sei = att$se, row = 92.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #att
-addpoly.default(x = con$b, sei = con$se, row = 78.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #con
-addpoly.default(x = exe$b, sei = exe$se, row = 59.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #exe
-addpoly.default(x = mem$b, sei = mem$se, row = 36.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #mem
+addpoly.default(x = att$b, sei = att$se, row = 91.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #att
+addpoly.default(x = con$b, sei = con$se, row = 77.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #con
+addpoly.default(x = exe$b, sei = exe$se, row = 58.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #exe
+addpoly.default(x = mem$b, sei = mem$se, row = 35.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #mem
 addpoly.default(x = ori$b, sei = ori$se, row = 26.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #ori
 addpoly.default(x = per$b, sei = per$se, row = 18.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #per
 addpoly.default(x = ver$b, sei = ver$se, row = 1.5, cex = 1, mlab = "", efac = 0.5, annotate = F, col = "red", border = "red") #ver
 
 #add summary statistics (estimate and 95%CI) for each subgroup
 #format "f" keeps trailing zeros
-text(2, 92.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(att$b, digits = 2, format = "f")), " [", .(formatC(att$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(att$ci.ub, digits = 2, format = "f")), "]")))
-text(2, 78.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(con$b, digits = 2, format = "f")), " [", .(formatC(con$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(con$ci.ub, digits = 2, format = "f")), "]")))
-text(2, 59.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(exe$b, digits = 2, format = "f")), " [", .(formatC(exe$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(exe$ci.ub, digits = 2, format = "f")), "]")))
-text(2, 36.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(mem$b, digits = 2, format = "f")), " [", .(formatC(mem$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(mem$ci.ub, digits = 2, format = "f")), "]")))
+text(2, 91.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(att$b, digits = 2, format = "f")), " [", .(formatC(att$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(att$ci.ub, digits = 2, format = "f")), "]")))
+text(2, 77.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(con$b, digits = 2, format = "f")), " [", .(formatC(con$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(con$ci.ub, digits = 2, format = "f")), "]")))
+text(2, 58.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(exe$b, digits = 2, format = "f")), " [", .(formatC(exe$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(exe$ci.ub, digits = 2, format = "f")), "]")))
+text(2, 35.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(mem$b, digits = 2, format = "f")), " [", .(formatC(mem$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(mem$ci.ub, digits = 2, format = "f")), "]")))
 text(2, 26.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(ori$b, digits = 2, format = "f")), " [", .(formatC(ori$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(ori$ci.ub, digits = 2, format = "f")), "]")))
 text(2, 18.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(per$b, digits = 2, format = "f")), " [", .(formatC(per$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(per$ci.ub, digits = 2, format = "f")), "]")))
 text(2, 1.5, cex = 1, pos = 2, col = "red", bquote(paste(.(formatC(ver$b, digits = 2, format = "f")), " [", .(formatC(ver$ci.lb, digits = 2, format = "f")), ", " ,.(formatC(ver$ci.ub, digits = 2, format = "f")), "]")))
