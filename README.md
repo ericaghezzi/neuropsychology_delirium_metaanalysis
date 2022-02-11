@@ -1,8 +1,8 @@
 # The neuropsychological profile of delirium vulnerability: A systematic review and meta-analysis
 
-R code for the analysis undertaken in Ghezzi et al. (In preparation). 
+R code for the analysis undertaken in Ghezzi et al. (2022). 
 
-Ghezzi ES, Ross TJ, Sharman R, Davis D, Boord MS, Thanabalan T, Thomas J, Keage HAD (In preparation). The neuropsychological profile of delirium vulnerability: A systematic review and meta-analysis.
+Ghezzi ES, Ross TJ, Sharman R, Davis D, Boord MS, Thanabalan T, Thomas J, Keage HAD (2022). The neuropsychological profile of delirium vulnerability: A systematic review and meta-analysis. Neuroscience & Biobehavioral Reviews, 132, 248-259. https://doi.org/10.1016/j.neubiorev.2021.11.046
 
 # File descriptions
 ## Main analysis files:
